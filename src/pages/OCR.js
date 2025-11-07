@@ -16,7 +16,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 
 
-const API_BASE = "http://172.13.222.62:8000";
+const API_BASE = "http://192.168.0.176:8000";
 
 export default function OCRScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -26,84 +26,86 @@ export default function OCRScreen() {
   const [isScanning, setIsScanning] = useState(false);
   const [photoUri, setPhotoUri] = useState(null);
   const [result, setResult] = useState(null);
+  const [zoom, setZoom] = useState(0);
 
   async function toJpeg(uri) {
-  const out = await ImageManipulator.manipulateAsync(
-    uri,
-    [], 
-    { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
-  );
-  return out.uri;
-}
-
-async function capture() {
-  try {
-    if (!cameraRef.current) return;
-    const photo = await cameraRef.current.takePictureAsync({
-      quality: 0.9,
-      skipProcessing: Platform.OS === "android",
+    const out = await ImageManipulator.manipulateAsync(uri, [], {
+      compress: 0.9,
+      format: ImageManipulator.SaveFormat.JPEG,
     });
-    const jpegUri = await toJpeg(photo.uri);
-    setPhotoUri(jpegUri);
-    await sendToOCR(jpegUri);
-  } catch (e) {
-    Alert.alert("Camera Error", e?.message || "Failed to capture image.");
+    return out.uri;
   }
-}
 
-async function pickFromGallery() {
-  try {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.9,
-    });
-    if (!res.canceled && res.assets?.[0]?.uri) {
-      const jpegUri = await toJpeg(res.assets[0].uri);
+  async function capture() {
+    try {
+      if (!cameraRef.current) return;
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 1,
+        skipProcessing: false,
+      });
+      const jpegUri = await toJpeg(photo.uri);
       setPhotoUri(jpegUri);
       await sendToOCR(jpegUri);
+    } catch (e) {
+      Alert.alert("Camera Error", e?.message || "Failed to capture image.");
     }
-  } catch (e) {
-    Alert.alert("Picker Error", e?.message || "Could not open gallery.");
   }
-}
 
-async function sendToOCR(uri) {
-  try {
-    setIsScanning(true);
-    setResult(null);
-
-    const form = new FormData();
-    form.append("file", { uri, name: "scan.jpg", type: "image/jpeg" });
-
-    const res = await fetch(`${API_BASE}/ocr/brand-info`, {
-      method: "POST",
-      headers: { Accept: "application/json" },
-      body: form,
-    });
-
-    if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
-    const data = await res.json();
-    console.log("OCR raw response:", data);
-
-    const normalized = {
-      cleaned_text: data?.brand_token || data?.brand_raw || "",
-      sections: data?.dailymed?.sections || {},
-      bbox: data?.bbox || null,
-      conf: typeof data?.detector_conf === "number" ? data.detector_conf : null,
-    };
-
-    setResult(normalized);
-    setShowModal(true);
-
-  } catch (e) {
-    Alert.alert("Scan failed", (e && e.message) || "Try a clearer photo in good light.");
-  } finally {
-    setIsScanning(false);
+  async function pickFromGallery() {
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1,
+      });
+      if (!res.canceled && res.assets?.[0]?.uri) {
+        const jpegUri = await toJpeg(res.assets[0].uri);
+        setPhotoUri(jpegUri);
+        await sendToOCR(jpegUri);
+      }
+    } catch (e) {
+      Alert.alert("Picker Error", e?.message || "Could not open gallery.");
+    }
   }
-}
 
+  async function sendToOCR(uri) {
+    try {
+      setIsScanning(true);
+      setResult(null);
 
-  // Permissions 
+      const form = new FormData();
+      form.append("file", { uri, name: "scan.jpg", type: "image/jpeg" });
+
+      const res = await fetch(`${API_BASE}/ocr/brand-info`, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: form,
+      });
+
+      if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+      const data = await res.json();
+      console.log("OCR raw response:", data);
+
+      const normalized = {
+        cleaned_text: data?.brand_token || data?.brand_raw || "",
+        sections: data?.dailymed?.sections || {},
+        bbox: data?.bbox || null,
+        conf:
+          typeof data?.detector_conf === "number" ? data.detector_conf : null,
+      };
+
+      setResult(normalized);
+      setShowModal(true);
+    } catch (e) {
+      Alert.alert(
+        "Scan failed",
+        (e && e.message) || "Try a clearer photo in good light."
+      );
+    } finally {
+      setIsScanning(false);
+    }
+  }
+
+  // Permissions
   if (hasPermission === null) {
     return (
       <View style={styles.center}>
@@ -117,7 +119,7 @@ async function sendToOCR(uri) {
       <View style={styles.center}>
         <Image
           source={require("../../assets/images/logo.png")}
-          style={{ width: 120, height: 46, marginBottom: 14 }}
+          style={{ width: 120, height: 46, marginBottom: 14}}
         />
         <Text style={styles.sectionHeaderText}>Camera Access Needed</Text>
         <Text style={[styles.muted, { marginTop: 8 }]}>
@@ -160,6 +162,9 @@ async function sendToOCR(uri) {
             ref={cameraRef}
             style={styles.camera}
             facing="back"
+            zoom={zoom}
+            enableZoomGesture={true}
+            focusMode="on"
           />
           <View pointerEvents="none" style={styles.frame}>
             <View style={styles.frameCornerTL} />
@@ -194,6 +199,7 @@ async function sendToOCR(uri) {
             onPress={() => {
               setResult(null);
               setPhotoUri(null);
+              setZoom(0);
             }}
             disabled={isScanning}
           >
@@ -204,8 +210,7 @@ async function sendToOCR(uri) {
         {/* Results section mirrors Dashboard cards/margins */}
         <View style={{ marginTop: 18 }}>
           {!result ? (
-            <Text style={{ color: "#58708A", marginTop: 8 }}>
-            </Text>
+            <Text style={{ color: "#58708A", marginTop: 8 }}></Text>
           ) : (
             <>
               {/* Result Modal */}
@@ -337,7 +342,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  camera: { width: "100%", height: 500},
+  camera: { width: "100%", aspectRatio: 3 / 4 },
   frame: {
     position: "absolute",
     top: 0,
@@ -421,7 +426,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#0D315B",
   },
 
-  primaryBtnText: { color: "white", fontWeight: "700" },
+  primaryBtnText: { color: "black", fontWeight: "700" },
   secondaryBtn: {
     backgroundColor: "#DDEBF6",
     paddingHorizontal: 14,
@@ -453,6 +458,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
+    backgroundColor: "#F6FCFF"
   },
 
   scanningPill: {
@@ -478,11 +484,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: "88%", 
-    backgroundColor: "#F6FCFF", 
+    height: "88%",
+    backgroundColor: "#F6FCFF",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingHorizontal: 18, 
+    paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 12,
     shadowColor: "#000",

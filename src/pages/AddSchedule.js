@@ -9,6 +9,8 @@ import { Alert } from "react-native";
 import { KeyboardAvoidingView, Platform } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { getPolicy, setTodayAction } from "../RL/bandit";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { NotificationService } from "../services/NotificationService";
 
 export default function AddSchedule({ navigation }) {
   const [fontsLoaded] = useFonts({
@@ -27,59 +29,72 @@ export default function AddSchedule({ navigation }) {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [tempTime, setTempTime] = useState(new Date());
 
-const savePreview = async () => {
-  if (
-    medName.trim() === "" ||
-    selectedType === "" ||
-    (customDosage === "" && dosage === "") ||
-    selectedDays.length === 0 ||
-    !reminderTime             
-  ) {
-    Alert.alert("Missing info", "Please fill in all required fields (including time).");
-    return;
-  }
-
-  const reminderData = {
-    id: Date.now().toString(),
-    medName,
-    type: selectedType,
-    dosage: customDosage || dosage,
-    days: selectedDays,
-    time: reminderTime,
-    history: [],
-  };
-
-  try {
-    const existing = await AsyncStorage.getItem("reminders");
-    const reminders = existing ? JSON.parse(existing) : [];
-    reminders.push(reminderData);
-
-    await AsyncStorage.setItem("reminders", JSON.stringify(reminders));
-
-    // initialize today's suggestion for this reminder
-    try {
-      const last = await setTodayAction(reminderData, reminderData.time);
-      console.log("Initialized policy for", reminderData.medName, last);
-      const policy = await getPolicy(reminderData.id);
-      console.log("Policy stored:", policy);
-    } catch (e) {
-      console.error("Failed to initialize policy", e);
+  const savePreview = async () => {
+    if (
+      medName.trim() === "" ||
+      selectedType === "" ||
+      (customDosage === "" && dosage === "") ||
+      selectedDays.length === 0 ||
+      !reminderTime
+    ) {
+      Alert.alert(
+        "Missing info",
+        "Please fill in all required fields (including time)."
+      );
+      return;
     }
 
-    Alert.alert(
-      "Reminder Set!",
-      `We'll remind you to take ${medName} (${customDosage || dosage}) on ${selectedDays.join(", ")}`
-    );
+    const reminderData = {
+      id: Date.now().toString(),
+      medName,
+      type: selectedType,
+      dosage: customDosage || dosage,
+      days: selectedDays,
+      time: reminderTime,
+      history: [],
+    };
 
-    navigation.navigate("Home", { refresh: Date.now() });
-    resetForm();
-    setSelectedType("");
-  } catch (error) {
-    console.error("Error saving Reminder: ", error);
-    Alert.alert("Error", "Failed to save reminder.");
-  }
-};
+    try {
+      const existing = await AsyncStorage.getItem("reminders");
+      const reminders = existing ? JSON.parse(existing) : [];
+      const id = await NotificationService.scheduleWeekly({
+        title: `Time for ${medName}`,
+        body: reminderData.dosage
+          ? `${reminderData.dosage} — tap when taken.`
+          : "It's medication time.",
+        timeStr: reminderTime,
+        days: selectedDays
+      });
+      reminderData.notificationId = id;
 
+      reminders.push(reminderData);
+      await AsyncStorage.setItem("reminders", JSON.stringify(reminders));
+
+      // initialize today's suggestion for this reminder
+      try {
+        const last = await setTodayAction(reminderData, reminderData.time);
+        console.log("Initialized policy for", reminderData.medName, last);
+        const policy = await getPolicy(reminderData.id);
+        console.log("Policy stored:", policy);
+      } catch (e) {
+        console.error("Failed to initialize policy", e);
+      }
+
+      Alert.alert(
+        "Reminder Set!",
+        `We'll remind you to take ${medName} (${
+          customDosage || dosage
+        }) on ${selectedDays.join(", ")}`
+      );
+
+      navigation.navigate("Home", { refresh: Date.now() });
+      resetForm();
+      setSelectedType("");
+    } catch (error) {
+      console.error("Error saving Reminder: ", error);
+      Alert.alert("Error", "Failed to save reminder.");
+    }
+  };
 
   const loadReminders = async () => {
     try {
@@ -177,7 +192,6 @@ const savePreview = async () => {
             keyboardShouldPersistTaps="handled"
           >
             <Text style={styles.title}>Add Schedule</Text>
-
             <Text style={styles.label}>Choose Medication Type:</Text>
             <View style={styles.iconRow}>
               <TouchableOpacity onPress={() => setSelectedType("capsule")}>
@@ -232,7 +246,6 @@ const savePreview = async () => {
                 />
               </TouchableOpacity>
             </View>
-
             <Text style={styles.label}>Medication Name: </Text>
             <TextInput
               style={styles.input}
@@ -240,9 +253,7 @@ const savePreview = async () => {
               value={medName}
               onChangeText={(text) => setMedName(text)}
             />
-
             <Text style={styles.label}> Dosage: </Text>
-
             {selectedType === "" ? (
               <Text style={styles.dosageHint}>
                 Please select a medication Type.
@@ -296,7 +307,6 @@ const savePreview = async () => {
                 )}
               </>
             )}
-
             <Text style={styles.label}>Select Days: </Text>
             <ScrollView
               horizontal
@@ -330,7 +340,6 @@ const savePreview = async () => {
                 </TouchableOpacity>
               ))}
             </ScrollView>
-
             <Text style={styles.label}>Select Reminder Time:</Text>
             <TouchableOpacity
               onPress={() => setShowTimePicker(true)}
@@ -341,30 +350,19 @@ const savePreview = async () => {
               </Text>
             </TouchableOpacity>
 
-            {showTimePicker && (
-              <>
-                <DateTimePicker
-                  value={tempTime}
-                  mode="time"
-                  display="spinner"
-                  onChange={(event, selectedDate) => {
-                    if (selectedDate) {
-                      setTempTime(selectedDate);
-                    }
-                  }}
-                />
-                <TouchableOpacity
-                  onPress={() => {
-                    setReminderTime(formatTime(tempTime));
-                    setShowTimePicker(false);
-                  }}
-                  style={[styles.timeBtn, { marginTop: 10 }]}
-                >
-                  <Text style={styles.timeBtnText}>Set Time</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
+            <DateTimePickerModal
+              isVisible={showTimePicker}
+              mode="time"
+              // keep spinner look
+              display="spinner"
+              date={tempTime}
+              onConfirm={(date) => {
+                setTempTime(date);
+                setReminderTime(formatTime(date));
+                setShowTimePicker(false);
+              }}
+              onCancel={() => setShowTimePicker(false)}
+            />
             <TouchableOpacity onPress={savePreview} style={styles.setBtn}>
               <Text style={styles.setBtnText}> Set Reminder </Text>
             </TouchableOpacity>

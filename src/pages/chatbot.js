@@ -12,7 +12,7 @@ import {
   ScrollView,
 } from "react-native";
 
-const API_BASE = "http://172.13.222.62:8000"; 
+const API_BASE = "http://192.168.0.176:8000"; 
 
 function categorizeToken(token) {
   const t = token.toLowerCase();

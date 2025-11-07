@@ -5,6 +5,9 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons, Feather, MaterialIcons } from "@expo/vector-icons";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import * as Notifications from "expo-notifications";
+import { useEffect, useRef } from "react";
+import { NotificationService } from "./src/services/NotificationService";
 
 // my pages
 import Dashboard from "./src/pages/Dashboard";
@@ -15,7 +18,6 @@ import OCRScreen from "./src/pages/OCR";
 const Camera = OCRScreen;
 const Chat = ChatbotScreen;
 const Settings = Dashboard;
-
 
 const Tab = createBottomTabNavigator();
 
@@ -62,6 +64,13 @@ function CenterButton({ children, onPress }) {
 }
 
 export default function App() {
+  useEffect(() => {
+    (async () => {
+      await NotificationService.init();
+      await NotificationService.ensureFromStorage();
+      await NotificationService.registerBackgroundRescheduler();
+    })();
+  }, []);
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <NavigationContainer>

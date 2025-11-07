@@ -27,13 +27,18 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.shahd2.icarereminder",
-       "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"] 
+       "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "android.permission.POST_NOTIFICATIONS"] 
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      ["expo-notifications", {
+        "icon": "./assets/icon.png",
+        "color": "#0D315B",
+        "sounds": []
+      }]
     ],
     "extra": {
       "eas": {
