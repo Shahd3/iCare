@@ -12,7 +12,7 @@ import {
   ScrollView,
 } from "react-native";
 
-const API_BASE = "http://192.168.0.176:8000"; 
+const API_BASE = "http://192.168.0.177:8000";
 
 function categorizeToken(token) {
   const t = token.toLowerCase();
@@ -38,7 +38,6 @@ const CATEGORY_META = {
 const DISCLAIMER =
   "Important: iCare’s Pilly is for education only and is NOT a medical diagnosis. Always consult a licensed clinician before taking any medication or action.";
 
-
 function Bubble({ side, children }) {
   const isLeft = side === "left";
   return (
@@ -61,7 +60,6 @@ function Avatar() {
 }
 
 function Category({ item, selected, toggle }) {
-
   const [open, setOpen] = useState(false);
   return (
     <View style={styles.categoryCard}>
@@ -95,14 +93,12 @@ function Category({ item, selected, toggle }) {
   );
 }
 
-
 export default function ChatbotScreen() {
   const [messages, setMessages] = useState([]);
-  const [selected, setSelected] = useState(new Set()); 
+  const [selected, setSelected] = useState(new Set());
   const [catalog, setCatalog] = useState([]);
   const listRef = useRef(null);
 
-  
   useEffect(() => {
     setMessages([
       {
@@ -120,7 +116,7 @@ export default function ChatbotScreen() {
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/symptoms`);
-        const data = await res.json(); 
+        const data = await res.json();
         const buckets = {};
         (data.symptoms || []).forEach((item) => {
           const catId = categorizeToken(item.token);
@@ -158,7 +154,6 @@ export default function ChatbotScreen() {
     return map;
   }, [catalog]);
 
-  
   useEffect(() => {
     listRef.current?.scrollToEnd({ animated: true });
   }, [messages]);
@@ -197,17 +192,16 @@ export default function ChatbotScreen() {
     const res = await fetch(`${API_BASE}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symptoms: pickedTokens }), 
+      body: JSON.stringify({ symptoms: pickedTokens }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json(); 
+    return res.json();
   }
 
   const sendSelection = async () => {
     const pickedTokens = [...selected];
     if (!pickedTokens.length) return;
 
-    
     const userText = pickedTokens
       .map((t) => tokenToLabel.get(t) || t)
       .join(", ");
@@ -241,7 +235,7 @@ export default function ChatbotScreen() {
           from: "bot",
           type: "choice",
           text: data?.low_confidence
-            ? "I’m not very confident. Add 1–2 more symptoms if you have them. Do you want to try another diagnosis?"
+            ? "I’m not very confident. Do you want to try another diagnosis?"
             : "Would you like another diagnosis?",
         },
       ]);
@@ -328,7 +322,7 @@ export default function ChatbotScreen() {
           <Text style={[styles.msgText, { marginBottom: 10 }]}>
             Pick all that apply:
           </Text>
-          <ScrollView style={{ maxHeight: 260 }}>
+          <ScrollView style={{ maxHeight: 260 }} nestedScrollEnabled={true}>
             {catalog.map((cat) => (
               <Category
                 key={cat.id}
@@ -338,6 +332,7 @@ export default function ChatbotScreen() {
               />
             ))}
           </ScrollView>
+
           <TouchableOpacity
             onPress={sendSelection}
             disabled={selected.size === 0}
@@ -376,6 +371,7 @@ export default function ChatbotScreen() {
         renderItem={renderItem}
         contentContainerStyle={{ padding: 16, paddingBottom: 110 }}
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
       />
     </KeyboardAvoidingView>
   );

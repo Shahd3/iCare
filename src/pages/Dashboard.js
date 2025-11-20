@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
+  AppState,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
@@ -18,183 +19,153 @@ import {
   parseTimeToMinutes12h as parseTimeToMinutes,
   setTodayAction as banditSetTodayAction,
   resetLearning,
-  applyTaken as banditApplyTaken,
 } from "../RL/bandit";
+import { loadReminders } from "../storage/reminders";
+import {
+  todayKey,
+  hasTakenToday as hasTakenTodayService,
+  markReminderTakenById,
+} from "../services/ReminderService";
+import { cancelReminderNotifications } from "../services/NotificationService";
 
 const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const todayKey = () => {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-};
+const getTodayShort = () => SHORT_DAYS[new Date().getDay()];
 
 export default function DashboardScreen({ navigation }) {
   const [reminders, setReminders] = useState([]);
+  const [todayLabel, setTodayLabel] = useState(new Date().toDateString());
 
-  const _todayKey = todayKey();
-  const todayShort = SHORT_DAYS[new Date().getDay()];
+  const refreshDashboard = useCallback(async () => {
+    // Reload reminders from storage
+    const list = await loadReminders();
+    setReminders(list);
+    setTodayLabel(new Date().toDateString());
 
-  const todayPill = () => new Date().toDateString();
+    // compute today
+    const todayISO = todayKey();
+    const todayShort = getTodayShort();
 
-  const isScheduledForToday = (r) =>
-    Array.isArray(r.days) ? r.days.includes(todayShort) : false;
-
-  const hasTakenToday = (r) =>
-    Array.isArray(r.history) && r.history.some((h) => h?.date === _todayKey);
-
-  const toggleTakenToday = async (rem) => {
-    const stored = await AsyncStorage.getItem("reminders");
-    const list = stored ? JSON.parse(stored) : [];
-
-    const idx = list.findIndex(
-      (x) => (x.id ?? x.medName) === (rem.id ?? rem.medName)
+    // RL logic:
+    const dueToday = list.filter(
+      (r) => Array.isArray(r.days) && r.days.includes(todayShort)
     );
-    if (idx === -1) return;
 
-    const r = list[idx];
-    if (!Array.isArray(r.history)) r.history = []; //checking just in case
+    const pending = [];
+    for (const r of dueToday) {
+      const id = r.id ?? r.medName;
+      const policy = await banditGetPolicy(id);
 
-    const already = r.history.some((h) => h?.date === _todayKey);
-
-    if (already) {
-      // remove today's record
-      r.history = r.history.filter((h) => h?.date !== _todayKey);
-    } else {
-      r.history.push({
-        date: _todayKey,
-        ts: Date.now(),
-        scheduled: r.time || "--:--",
-        offset: r.currentOffsetMin ?? 0,
-        reward: null,
-      });
+      if (!policy?.last || policy.last.date !== todayISO) {
+        const { suggested } = await banditSetTodayAction(r, r.time);
+        if (suggested && suggested !== r.time) {
+          pending.push({ id, medName: r.medName, suggested });
+        }
+      }
     }
 
-    list[idx] = r; //update
-    await AsyncStorage.setItem("reminders", JSON.stringify(list));
-    setReminders(list);
+    if (!pending.length) return;
+
+    const rec = pending[0];
+
+    Alert.alert(
+      "Try a better time?",
+      `You often take ${rec.medName} closer to ${rec.suggested}. Use this time from now on?`,
+      [
+        {
+          text: "Keep current",
+          style: "cancel",
+          onPress: async () => {
+            await resetLearning(rec.id);
+
+            const stored2 = await AsyncStorage.getItem("reminders");
+            const list2 = stored2 ? JSON.parse(stored2) : [];
+            const idx = list2.findIndex((x) => (x.id ?? x.medName) === rec.id);
+
+            if (idx !== -1) {
+              list2[idx].history = [];
+              await AsyncStorage.setItem("reminders", JSON.stringify(list2));
+              setReminders(list2);
+            }
+          },
+        },
+        {
+          text: "Use it",
+          onPress: async () => {
+            const stored2 = await AsyncStorage.getItem("reminders");
+            const list2 = stored2 ? JSON.parse(stored2) : [];
+            const idx = list2.findIndex((x) => (x.id ?? x.medName) === rec.id);
+            if (idx !== -1) {
+              // update time in reminder
+              list2[idx].time = rec.suggested;
+              await AsyncStorage.setItem("reminders", JSON.stringify(list2));
+              setReminders(list2);
+
+              // reset RL & clear history for this reminder
+              await resetLearning(rec.id);
+              list2[idx].history = [];
+              await AsyncStorage.setItem("reminders", JSON.stringify(list2));
+              setReminders(list2);
+            }
+          },
+        },
+      ]
+    );
+  }, []);
+
+  const isScheduledForToday = (r) => {
+    const todayShort = getTodayShort();
+    return Array.isArray(r.days) ? r.days.includes(todayShort) : false;
   };
 
+  // centralized “taken” logic now lives in ReminderService
   async function onTakenPress(reminder) {
-    const wasTaken = hasTakenToday(reminder);
+    const id = reminder.id ?? reminder.medName;
+    const result = await markReminderTakenById(id);
 
-    await toggleTakenToday(reminder);
-
-    //checks if it was taken then toggled
-    if (wasTaken) return;
-
-    const { reward, suggested, offset } = await banditApplyTaken(reminder);
-
-    // Update today’s history
-    const stored = await AsyncStorage.getItem("reminders");
-    const list = stored ? JSON.parse(stored) : [];
-    const idx = list.findIndex(
-      (x) => (x.id ?? x.medName) === (reminder.id ?? reminder.medName)
-    );
-    if (idx !== -1) {
-      if (!Array.isArray(list[idx].history)) list[idx].history = [];
-      const h = list[idx].history.find((e) => e?.date === _todayKey);
-      if (h) {
-        h.scheduled = suggested ?? (reminder.time || "--:--");
-        h.offset = offset ?? 0;
-        h.reward = reward ?? 0;
+    if (result?.changed) {
+      // refresh local list from service result
+      setReminders(result.reminders);
+      if (result.reward != null) {
+        console.log("Bandit updated with reward:", result.reward);
       }
-      await AsyncStorage.setItem("reminders", JSON.stringify(list));
-      setReminders(list);
     }
-
-    console.log("Bandit updated with reward:", reward);
   }
 
   useFocusEffect(
     useCallback(() => {
+      let isActive = true;
+
       (async () => {
-        // load reminders
-        const stored = await AsyncStorage.getItem("reminders");
-        const list = stored ? JSON.parse(stored) : [];
-        setReminders(list);
-
-        // what’s due today
-        const today = new Date().toISOString().slice(0, 10);
-        const dueToday = list.filter(
-          (r) => Array.isArray(r.days) && r.days.includes(todayShort)
-        );
-
-        const pending = [];
-        for (const r of dueToday) {
-          const id = r.id ?? r.medName;
-          const policy = await banditGetPolicy(id);
-
-          if (!policy?.last || policy.last.date !== today) {
-            const { suggested } = await banditSetTodayAction(r, r.time);
-            // if suggestion differs, collect to propose
-            if (suggested && suggested !== r.time) {
-              pending.push({ id, medName: r.medName, suggested });
-            }
-          }
-        }
-
-        if (pending.length) {
-          const rec = pending[0];
-          Alert.alert(
-            "Try a better time?",
-            `You often take ${rec.medName} closer to ${rec.suggested}. Use this time from now on?`,
-            [
-              {
-                text: "Keep current",
-                style: "cancel",
-                onPress: async () => {
-                  await resetLearning(rec.id);
-
-                  const stored2 = await AsyncStorage.getItem("reminders");
-                  const list2 = stored2 ? JSON.parse(stored2) : [];
-                  const idx = list2.findIndex(
-                    (x) => (x.id ?? x.medName) === rec.id
-                  );
-
-                  if (idx !== -1) {
-                    list2[idx].history = [];
-                    await AsyncStorage.setItem(
-                      "reminders",
-                      JSON.stringify(list2)
-                    );
-                    setReminders(list2);
-                  }
-                },
-              },
-              {
-                text: "Use it",
-                onPress: async () => {
-                  const stored2 = await AsyncStorage.getItem("reminders");
-                  const list2 = stored2 ? JSON.parse(stored2) : [];
-                  const idx = list2.findIndex(
-                    (x) => (x.id ?? x.medName) === rec.id
-                  );
-                  if (idx !== -1) {
-                    list2[idx].time = rec.suggested;
-                    await AsyncStorage.setItem(
-                      "reminders",
-                      JSON.stringify(list2)
-                    );
-                    setReminders(list2);
-                    await resetLearning(rec.id);
-                    list2[idx].history = [];
-                    await AsyncStorage.setItem(
-                      "reminders",
-                      JSON.stringify(list2)
-                    );
-                    setReminders(list2);
-                  }
-                },
-              },
-            ]
-          );
-        }
+        if (!isActive) return;
+        await refreshDashboard();
       })();
-    }, [todayShort])
+
+      return () => {
+        isActive = false;
+      };
+    }, [refreshDashboard])
   );
+
+  const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      const wasBackground =
+        appState.current === "background" || appState.current === "inactive";
+
+      if (wasBackground && nextState === "active") {
+        // App came back to foreground: refresh dashboard
+        refreshDashboard();
+      }
+
+      appState.current = nextState;
+    });
+
+    return () => {
+      sub.remove();
+    };
+  }, [refreshDashboard]);
 
   const groupByExactTime = (array) => {
     const grouped = array.reduce((acc, r) => {
@@ -219,6 +190,15 @@ export default function DashboardScreen({ navigation }) {
     groupByExactTime(others);
 
   const deleteReminder = async (rem) => {
+    try {
+      await cancelReminderNotifications(rem);
+    } catch (e) {
+      console.warn(
+        "Failed to cancel notifications for reminder",
+        rem.id ?? rem.medName,
+        e
+      );
+    }
     const stored = await AsyncStorage.getItem("reminders");
     const list = stored ? JSON.parse(stored) : [];
     const next = list.filter(
@@ -227,92 +207,6 @@ export default function DashboardScreen({ navigation }) {
     await AsyncStorage.setItem("reminders", JSON.stringify(next));
     setReminders(next);
   };
-
-  /*
-async function resetAllPoliciesAndHistories() {
-  const stored = await AsyncStorage.getItem("reminders");
-  const list = stored ? JSON.parse(stored) : [];
-  for (const r of list) {
-    await resetLearning(r.id ?? r.medName); // removes policy:<id>
-  }
-  for (const r of list) r.history = [];
-  await AsyncStorage.setItem("reminders", JSON.stringify(list));
-  console.log("Cleared all policies and histories. Next focus will re-pick.");
-}
-
-function DevPanel({ reminders, navigation }) {
-  const showPolicies = async () => {
-    for (const r of reminders) {
-      const raw = await AsyncStorage.getItem(`policy:${r.id ?? r.medName}`);
-      console.log("POLICY", r.medName, raw ? JSON.parse(raw) : "(none)");
-    }
-    alert("Policies printed to console.");
-  };
-
-  const clearPolicies = async () => {
-    for (const r of reminders) {
-      await AsyncStorage.removeItem(`policy:${r.id ?? r.medName}`);
-    }
-    alert("Cleared all policies.");
-  };
-
-  const clearHistory = async () => {
-    const raw = await AsyncStorage.getItem("reminders");
-    const list = raw ? JSON.parse(raw) : [];
-    list.forEach((r) => (r.history = []));
-    await AsyncStorage.setItem("reminders", JSON.stringify(list));
-    alert("Cleared reminder histories.");
-  };
-
-  const forceRepick = async () => {
-    for (const r of reminders) {
-      const k = `policy:${r.id ?? r.medName}`;
-      const raw = await AsyncStorage.getItem(k);
-      if (!raw) continue;
-      const p = JSON.parse(raw);
-      if (p && p.last) {
-        p.last.date = "1970-01-01"; // make it "not today"
-        await AsyncStorage.setItem(k, JSON.stringify(p));
-      }
-    }
-    Alert.alert("OK", "Will re-pick on next Dashboard focus.");
-  };
-
-  const devBtn = {
-    backgroundColor: "#0D315B",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginRight: 8,
-  };
-  const devTxt = { color: "white", fontWeight: "700" };
-
-  return (
-    <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <TouchableOpacity onPress={showPolicies} style={devBtn}>
-          <Text style={devTxt}>Log Policies</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={clearPolicies} style={devBtn}>
-          <Text style={devTxt}>Clear Policies</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={clearHistory} style={devBtn}>
-          <Text style={devTxt}>Clear Histories</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => navigation.navigate("Add")} style={devBtn}>
-          <Text style={devTxt}>Add Test Reminder</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={forceRepick} style={devBtn}>
-          <Text style={devTxt}>Force Re-pick</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={resetAllPoliciesAndHistories} style={devBtn}>
-          <Text style={devTxt}>Reset All Policies</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
-  );
-}
-*/
 
   // render right action (trash)
   const renderRightActionsFor = (rem) => (
@@ -359,7 +253,7 @@ function DevPanel({ reminders, navigation }) {
             <Text style={styles.hiText}>Hi, Alex!</Text>
             <Text style={styles.smallLine}>⭐ You’re Doing Great Alex!</Text>
             <View style={styles.datePill}>
-              <Text style={styles.datePillText}>{todayPill()}</Text>
+              <Text style={styles.datePillText}>{todayLabel}</Text>
             </View>
           </View>
           <TouchableOpacity
@@ -401,7 +295,7 @@ function DevPanel({ reminders, navigation }) {
 
                 {/* cards for this time */}
                 {groupedToday[label].map((r, i) => {
-                  const taken = hasTakenToday(r);
+                  const taken = hasTakenTodayService(r);
                   return (
                     <Swipeable
                       key={(r.id ?? r.medName) + "-" + i}

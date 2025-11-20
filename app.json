@@ -4,11 +4,11 @@
     "slug": "icare-reminder",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icons/ios-light.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image":"./assets/icons/splash-icon-light.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -17,17 +17,24 @@
       "bundleIdentifier": "com.shahd2.icarereminder",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "Allow iCare to scan medicine labels."
+        "NSCameraUsageDescription": "Allow iCare to scan medicine labels.",
+        "NSLocationWhenInUseUsageDescription": "iCare uses your location to suggest nearby pharmacies."
+      },
+      "icon": {
+        "light": "./assets/icons/ios-light.png",
+        "dark": "./assets/icons/ios-dark.png",
+        "tinted": "./assets/icons/ios-tinted.png"
       }
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
+     "adaptiveIcon": {
+     "foregroundImage": "./assets/icons/adaptive-icon.png",
+     "backgroundColor": "#FFFFFF"
+     },
       "edgeToEdgeEnabled": true,
       "package": "com.shahd2.icarereminder",
-       "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "android.permission.POST_NOTIFICATIONS"] 
+       "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "android.permission.POST_NOTIFICATIONS"],
+       "minSdkVersion": 26
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -35,7 +42,7 @@
     "plugins": [
       "expo-font",
       ["expo-notifications", {
-        "icon": "./assets/icon.png",
+        "icon": "./assets/icons/ios-light.png",
         "color": "#0D315B",
         "sounds": []
       }]

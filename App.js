@@ -1,23 +1,25 @@
-import "react-native-gesture-handler"; // keep this as the FIRST import
-import React from "react";
+import "react-native-gesture-handler";
+import React, { useEffect } from "react";
 import { View, TouchableOpacity, Platform } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons, Feather, MaterialIcons } from "@expo/vector-icons";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import * as Notifications from "expo-notifications";
-import { useEffect, useRef } from "react";
-import { NotificationService } from "./src/services/NotificationService";
+import {
+  initNotifications,
+  registerNotificationTapListener,
+} from "./src/services/NotificationService";
 
 // my pages
 import Dashboard from "./src/pages/Dashboard";
 import AddSchedule from "./src/pages/AddSchedule";
 import ChatbotScreen from "./src/pages/chatbot";
 import OCRScreen from "./src/pages/OCR";
+import PharmacyScreen from "./src/pages/Pharmacy";
 
 const Camera = OCRScreen;
 const Chat = ChatbotScreen;
-const Settings = Dashboard;
+const Pharmacy = PharmacyScreen;
 
 const Tab = createBottomTabNavigator();
 
@@ -66,11 +68,16 @@ function CenterButton({ children, onPress }) {
 export default function App() {
   useEffect(() => {
     (async () => {
-      await NotificationService.init();
-      await NotificationService.ensureFromStorage();
-      await NotificationService.registerBackgroundRescheduler();
+      const ok = await initNotifications();
+      console.log("Allows Notifications?", ok);
     })();
+
+    const sub = registerNotificationTapListener();
+    return () => {
+      sub?.remove();
+    };
   }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <NavigationContainer>
@@ -83,7 +90,7 @@ export default function App() {
               height: 60,
               borderRadius: 40,
               marginHorizontal: 8,
-              marginBottom: 24,
+              marginBottom: Platform.OS === "android" ? 45 : 20,
               backgroundColor: COLORS.bar,
               borderTopWidth: 0,
               paddingHorizontal: 14,
@@ -109,10 +116,8 @@ export default function App() {
                       color={color}
                     />
                   );
-                case "Settings":
-                  return (
-                    <MaterialIcons name="more-horiz" size={28} color={color} />
-                  );
+                case "Pharmacy":
+                  return <Feather name="map-pin" size={24} color={color} />;
                 default:
                   return null;
               }
@@ -133,7 +138,7 @@ export default function App() {
             }}
           />
           <Tab.Screen name="Chat" component={Chat} />
-          <Tab.Screen name="Settings" component={Settings} />
+          <Tab.Screen name="Pharmacy" component={Pharmacy} />
         </Tab.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>

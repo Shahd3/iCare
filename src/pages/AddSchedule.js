@@ -10,7 +10,8 @@ import { KeyboardAvoidingView, Platform } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { getPolicy, setTodayAction } from "../RL/bandit";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
-import { NotificationService } from "../services/NotificationService";
+import { scheduleReminderNotifications } from "../services/NotificationService";
+import { upsertReminder } from "../storage/reminders";
 
 export default function AddSchedule({ navigation }) {
   const [fontsLoaded] = useFonts({
@@ -23,7 +24,6 @@ export default function AddSchedule({ navigation }) {
   const [customDosage, setCustomDosage] = useState("");
   const [selectedDays, setSelectedDays] = useState([]);
   const [medName, setMedName] = useState("");
-  const [savedReminders, setSavedReminders] = useState([]);
   const [rawDosageInput, setRawDosageInput] = useState("");
   const [reminderTime, setReminderTime] = useState("");
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -44,6 +44,21 @@ export default function AddSchedule({ navigation }) {
       return;
     }
 
+    const dayNameToExpoWeekday = {
+      Sun: 1,
+      Mon: 2,
+      Tue: 3,
+      Wed: 4,
+      Thu: 5,
+      Fri: 6,
+      Sat: 7,
+    };
+
+    const weekdays = selectedDays.map((day) => dayNameToExpoWeekday[day]);
+
+    const hour = tempTime.getHours();
+    const minute = tempTime.getMinutes();
+
     const reminderData = {
       id: Date.now().toString(),
       medName,
@@ -52,23 +67,26 @@ export default function AddSchedule({ navigation }) {
       days: selectedDays,
       time: reminderTime,
       history: [],
+      hour,
+      minute,
+      notificationIds: [],
+      takenHistory: {},
     };
-
     try {
-      const existing = await AsyncStorage.getItem("reminders");
-      const reminders = existing ? JSON.parse(existing) : [];
-      const id = await NotificationService.scheduleWeekly({
-        title: `Time for ${medName}`,
-        body: reminderData.dosage
-          ? `${reminderData.dosage} — tap when taken.`
-          : "It's medication time.",
-        timeStr: reminderTime,
-        days: selectedDays
+      //build notification
+      const notificationIds = await scheduleReminderNotifications({
+        id: reminderData.id,
+        name: reminderData.medName,
+        dosage: reminderData.dosage,
+        hour: reminderData.hour,
+        minute: reminderData.minute,
+        days: reminderData.days,
       });
-      reminderData.notificationId = id;
 
-      reminders.push(reminderData);
-      await AsyncStorage.setItem("reminders", JSON.stringify(reminders));
+      reminderData.notificationIds = notificationIds;
+
+      //save reminder, storage helper
+      await upsertReminder(reminderData);
 
       // initialize today's suggestion for this reminder
       try {
@@ -87,23 +105,12 @@ export default function AddSchedule({ navigation }) {
         }) on ${selectedDays.join(", ")}`
       );
 
-      navigation.navigate("Home", { refresh: Date.now() });
+      navigation.navigate("Home");
       resetForm();
       setSelectedType("");
     } catch (error) {
       console.error("Error saving Reminder: ", error);
       Alert.alert("Error", "Failed to save reminder.");
-    }
-  };
-
-  const loadReminders = async () => {
-    try {
-      const stored = await AsyncStorage.getItem("reminders");
-      if (stored) {
-        setSavedReminders(JSON.parse(stored));
-      }
-    } catch (error) {
-      console.error("Error loading reminders:", error);
     }
   };
 
@@ -156,10 +163,6 @@ export default function AddSchedule({ navigation }) {
 
     return `${hours.toString().padStart(2, "0")}:${minutes} ${ampm}`;
   };
-
-  useEffect(() => {
-    loadReminders();
-  }, []);
 
   return (
     <KeyboardAvoidingView
@@ -349,20 +352,44 @@ export default function AddSchedule({ navigation }) {
                 {reminderTime ? ` ${reminderTime}` : "Select Time"}
               </Text>
             </TouchableOpacity>
+            {showTimePicker &&
+              (Platform.OS === "ios" ? (
+                <>
+                  <DateTimePicker
+                    value={tempTime}
+                    mode="time"
+                    display="spinner"
+                    onChange={(event, selectedDate) => {
+                      if (selectedDate) {
+                        setTempTime(selectedDate);
+                      }
+                    }}
+                  />
+                  <TouchableOpacity
+                    onPress={() => {
+                      setReminderTime(formatTime(tempTime));
+                      setShowTimePicker(false);
+                    }}
+                    style={[styles.timeBtn, { marginTop: 10 }]}
+                  >
+                    <Text style={styles.timeBtnText}>Set Time</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <DateTimePickerModal
+                  isVisible={showTimePicker}
+                  mode="time"
+                  display="spinner" 
+                  date={tempTime}
+                  onConfirm={(date) => {
+                    setTempTime(date);
+                    setReminderTime(formatTime(date));
+                    setShowTimePicker(false);
+                  }}
+                  onCancel={() => setShowTimePicker(false)}
+                />
+              ))}
 
-            <DateTimePickerModal
-              isVisible={showTimePicker}
-              mode="time"
-              // keep spinner look
-              display="spinner"
-              date={tempTime}
-              onConfirm={(date) => {
-                setTempTime(date);
-                setReminderTime(formatTime(date));
-                setShowTimePicker(false);
-              }}
-              onCancel={() => setShowTimePicker(false)}
-            />
             <TouchableOpacity onPress={savePreview} style={styles.setBtn}>
               <Text style={styles.setBtnText}> Set Reminder </Text>
             </TouchableOpacity>
@@ -385,13 +412,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 80,
     padding: 20,
     paddingTop: 40,
-    minHeight: "85%",
+    minHeight: "90%",
     marginTop: "10%",
   },
   title: {
     fontSize: 28,
-    fontWeight: "bold",
-    marginBottom: 30,
+    marginBottom: 20,
     textAlign: "left",
     color: "black",
     fontFamily: "Kalnia",
@@ -488,10 +514,12 @@ const styles = StyleSheet.create({
     color: "#888",
     fontSize: 13,
     marginLeft: 13,
+    marginBottom: 13,
   },
   dayRow: {
     paddingHorizontal: 10,
     gap: 10,
+    marginBottom: 10,
   },
 
   dayButton: {
@@ -520,13 +548,14 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
     alignItems: "center",
-    marginTop: 40,
+    marginTop: 10,
+    marginBottom: 40,
   },
 
   setBtnText: {
     color: "white",
     fontFamily: "Kalnia",
-    fontSize: 16,
+    fontSize: 14,
   },
   timeBtn: {
     backgroundColor: "#eaf3fb",

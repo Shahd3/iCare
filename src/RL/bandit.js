@@ -4,7 +4,7 @@ export const OFFSETS = Array.from({ length: 145 }, (_, i) => (i - 72) * 10);
 export const EPSILON = 0;
 export const ALPHA = 0.2;
 export const MIN_OBS = 5;
-export const MIN_GAIN = 0.15;
+export const MIN_GAIN = 0.03;
 // export const STREAK_DAYS = 2;
 
 export const REWARD_WINDOW_MIN = 15;
@@ -71,7 +71,6 @@ export function applyOffset(baseTime12h, offsetMin) {
 }
 
 // RL
-
 //decision maker
 export function chooseAction(policy, eps = EPSILON) {
   if (Math.random() < eps) return Math.floor(Math.random() * OFFSETS.length); //explore
@@ -149,10 +148,8 @@ export async function setTodayAction(reminder, baseTime12h) {
     enoughData,
     passesThreshold,
   });
-
   return policy.last;
 }
-
 const timeDiffAbs = (aMin, bMin) => {
   let d = Math.abs(aMin - bMin);
   return Math.min(d, 1440 - d);

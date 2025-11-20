@@ -8,15 +8,15 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   Platform,
-  Modal
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 
-
-const API_BASE = "http://192.168.0.176:8000";
+const API_BASE = "http://192.168.0.177:8000";
+const IOS_DEFAULT_ZOOM = 0.1;
 
 export default function OCRScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -26,7 +26,6 @@ export default function OCRScreen() {
   const [isScanning, setIsScanning] = useState(false);
   const [photoUri, setPhotoUri] = useState(null);
   const [result, setResult] = useState(null);
-  const [zoom, setZoom] = useState(0);
 
   async function toJpeg(uri) {
     const out = await ImageManipulator.manipulateAsync(uri, [], {
@@ -119,7 +118,7 @@ export default function OCRScreen() {
       <View style={styles.center}>
         <Image
           source={require("../../assets/images/logo.png")}
-          style={{ width: 120, height: 46, marginBottom: 14}}
+          style={{ width: 120, height: 46, marginBottom: 14 }}
         />
         <Text style={styles.sectionHeaderText}>Camera Access Needed</Text>
         <Text style={[styles.muted, { marginTop: 8 }]}>
@@ -144,9 +143,7 @@ export default function OCRScreen() {
         />
       </View>
 
-      {/* Content padding matches Dashboard (horizontal 18) */}
       <View style={{ paddingHorizontal: 18, paddingTop: "30%" }}>
-        {/* Title row to match section headers in Dashboard */}
         <View style={styles.titleRow}>
           {isScanning ? (
             <View style={styles.scanningPill}>
@@ -156,15 +153,15 @@ export default function OCRScreen() {
           ) : null}
         </View>
 
-        {/* Camera block with same rounding & shadow language */}
+        {/* Camera block */}
         <View style={styles.cameraWrap}>
           <CameraView
             ref={cameraRef}
             style={styles.camera}
             facing="back"
-            zoom={zoom}
-            enableZoomGesture={true}
+            enableZoomGesture={false} 
             focusMode="on"
+            zoom={Platform.OS === "ios" ? IOS_DEFAULT_ZOOM : 0}
           />
           <View pointerEvents="none" style={styles.frame}>
             <View style={styles.frameCornerTL} />
@@ -199,7 +196,6 @@ export default function OCRScreen() {
             onPress={() => {
               setResult(null);
               setPhotoUri(null);
-              setZoom(0);
             }}
             disabled={isScanning}
           >
@@ -207,34 +203,29 @@ export default function OCRScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Results section mirrors Dashboard cards/margins */}
+        {/* Results */}
         <View style={{ marginTop: 18 }}>
           {!result ? (
             <Text style={{ color: "#58708A", marginTop: 8 }}></Text>
           ) : (
             <>
-              {/* Result Modal */}
               <Modal
                 visible={showModal}
                 animationType="slide"
                 transparent
                 onRequestClose={() => setShowModal(false)}
               >
-                {/* Dimmed backdrop */}
                 <TouchableOpacity
                   activeOpacity={1}
                   onPress={() => setShowModal(false)}
                   style={styles.backdrop}
                 />
 
-                {/* Sheet */}
                 <View style={styles.sheet}>
-                  {/* drag handle */}
                   <View style={styles.handleWrap}>
                     <View style={styles.handle} />
                   </View>
 
-                  {/* header row: title + close */}
                   <View style={styles.sheetHeaderRow}>
                     <Text style={styles.sheetTitle}>Scan Result</Text>
                     <TouchableOpacity
@@ -245,7 +236,6 @@ export default function OCRScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* summary card */}
                   {result && (
                     <View
                       style={[
@@ -269,7 +259,6 @@ export default function OCRScreen() {
                     </View>
                   )}
 
-                  {/* sections scroll */}
                   <FlatList
                     data={Object.entries((result && result.sections) || {})}
                     keyExtractor={([k]) => k}
@@ -284,7 +273,7 @@ export default function OCRScreen() {
                     contentContainerStyle={{ paddingBottom: 24 }}
                     ListEmptyComponent={
                       <Text style={{ color: "#58708A", marginTop: 8 }}>
-                        No sections parsed.
+                        No sections found.
                       </Text>
                     }
                   />
@@ -458,7 +447,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    backgroundColor: "#F6FCFF"
+    backgroundColor: "#F6FCFF",
   },
 
   scanningPill: {
