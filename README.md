@@ -1,180 +1,138 @@
-iCare – AI-Powered Prescription Reminder App
+# iCare
 
-iCare is a mobile prescription reminder application designed to improve medication adherence using adaptive AI techniques.
-Unlike traditional reminder apps with fixed alerts, iCare learns from user behavior and intelligently suggests better medication times to match real-life routines.
+**AI‑Powered Prescription Reminder Mobile Application**
 
-This project was developed as a final year capstone for the Bachelor of Software Engineering program at Al Ain University.
+A smart, offline‑first mobile app that helps users take their medication on time. iCare goes beyond fixed alarms by learning from user behavior and suggesting better reminder times using lightweight reinforcement learning.
 
-🚀 Key Features
-💊 Smart Medication Scheduling
+---
 
-Create medication reminders with:
+## Overview
 
-Medication name
+Most reminder apps fire alerts at static times. Real life isn’t static.
 
-Type (pill, capsule, solution, injection)
+iCare adapts. It observes when users actually take their medication and gradually adjusts reminder timing to better match their routine. The result is higher adherence with zero manual tweaking.
 
-Dosage (preset or custom)
+Developed as a **final year capstone project** for the **BSc in Software Engineering** at **Al Ain University**.
 
-Selected days
+---
 
-Reminder time
+## Core Features
 
-All reminders are stored locally for offline use
+### Medication Reminders
 
-🧠 Adaptive Reminder System (Reinforcement Learning)
+* Create reminders with medication name, type, dosage, days, and time
+* Fully offline storage
+* Simple flow designed for non‑technical users
 
-Uses a lightweight Reinforcement Learning (Q-learning / multi-armed bandit) approach
+### Adaptive Reminder Intelligence
 
-Tracks when users actually take their medication
+* Lightweight reinforcement learning (Q‑learning inspired bandit)
+* Learns preferred time offsets (early / late)
+* Improves suggestions over time based on real intake behavior
+* No cloud, no heavy ML frameworks
 
-Learns preferred time offsets (early / late)
+### Intake Tracking
 
-Suggests better reminder times based on real behavior
+* Mark medication as taken
+* Daily intake history stored locally
+* Intake timing used as feedback for learning
 
-Automatically improves over time without manual configuration
+### Dashboard
 
-Implemented in bandit.js using:
+* Clear separation of today’s reminders
+* Time‑based grouping
+* Swipe‑to‑delete support
 
-Epsilon-greedy exploration
+---
 
-Reward shaping
+## How the Learning Logic Works
 
-Local policy persistence via AsyncStorage
+1. Each reminder starts with a base time
+2. Small offsets are tested (±15–30 minutes)
+3. If a user consistently takes medication closer to an offset, it receives a higher reward
+4. Over time, the system suggests a better reminder time
+5. The user always stays in control
 
-✅ Medication Intake Tracking
+Learning logic is implemented locally in `bandit.js` using an epsilon‑greedy strategy.
 
-Users can mark medications as taken
+---
 
-Daily history is stored per reminder
+## Tech Stack
 
-Intake timing is used as feedback for the learning algorithm
+**Mobile**
 
-📊 Daily Dashboard
+* React Native
+* Expo
+* React Navigation
 
-“Due Today” vs “Other” reminders
+**Storage**
 
-Grouped by time
+* AsyncStorage (offline‑first)
 
-Clean, minimal UI optimized for ease of use
+**Logic / AI**
 
-Swipe-to-delete functionality
+* Reinforcement learning (bandit approach)
+* Pure JavaScript implementation
 
-📱 Modern Mobile UI
+---
 
-Built with React Native + Expo
+## Project Structure
 
-Bottom tab navigation
-
-Gesture-based interactions
-
-Designed for elderly and non-technical users
-
-🧠 How the AI Works (Short Version)
-
-Each medication has a base reminder time
-
-The system tests small time offsets (e.g. ±15, ±30 minutes)
-
-If the user consistently takes medication closer to a different time:
-
-That offset gains a higher reward
-
-Once enough evidence exists:
-
-iCare suggests a better permanent time
-
-The user stays in control — suggestions are optional
-
-No cloud. No black box. Everything runs locally.
-
-🛠 Tech Stack
-
-Frontend / Mobile
-
-React Native
-
-Expo
-
-React Navigation
-
-React Native Gesture Handler
-
-Storage
-
-AsyncStorage (offline-first)
-
-AI / Logic
-
-Reinforcement Learning (Q-learning inspired bandit)
-
-JavaScript implementation (no heavy ML frameworks)
-
-UI / Icons
-
-Expo Vector Icons
-
-Custom assets
-
-📂 Project Structure
-icare/
+```
+iCare/
 ├── App.js
 ├── src/
 │   ├── pages/
 │   │   ├── Dashboard.js
-│   │   ├── AddSchedule.js
-│   ├── lib/
-│   │   └── bandit.js   # Reinforcement Learning logic
+│   │   └── AddSchedule.js
+│   └── lib/
+│       └── bandit.js
 ├── assets/
-│   ├── images/
-│   └── fonts/
+```
 
-⚙️ Installation & Run
+---
+
+## Installation
+
+```bash
 git clone https://github.com/Shahd3/iCare.git
 cd iCare
 npm install
 npx expo start
+```
 
+Requires Node.js and Expo CLI.
 
-Requires Node.js, Expo CLI, and a mobile simulator or Expo Go app.
+---
 
-📌 Project Scope & Notes
+## Scope
 
-Mobile-only application (not web-based)
+* Mobile application only
+* Single user (patient‑focused)
+* No doctor or caregiver roles
+* Fully offline
+* Designed for future extensions (OCR, chatbot, voice input)
 
-Single user (no doctor/caregiver accounts)
+---
 
-Works fully offline
+## Academic Information
 
-Focused on patient self-management
+**University:** Al Ain University
+**Degree:** BSc in Software Engineering
+**Course:** Capstone Project
+**Year:** 2025
 
-Designed for extensibility (OCR, chatbot, voice features planned)
+### Team
 
-🎓 Academic Context
+* Abrar Hamdi
+* Mohammed Tariq
+* Shahd Alamoodi
+* Umama Binte Sayed
 
-University: Al Ain University
+**Supervisor:** Dr. Yazeed Ghadi
 
-College: College of Engineering
+---
 
-Degree: BSc in Software Engineering
+## License
 
-Course: Capstone Project
-
-Year: 2025
-
-Team Members
-
-Abrar Hamdi
-
-Mohammed Tariq
-
-Shahd Alamoodi
-
-Umama Binte Sayed
-
-Supervisor: Dr. Yazeed Ghadi
-
-📄 License
-
-This project is developed for academic purposes.
-All rights reserved © 2025.
+Academic project. All rights reserved © 2025.
